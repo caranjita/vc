@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuraFace | Biometric Attendance System</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons for crisp UI iconography -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- face-api.js CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+  <style>
+    /* ==========================================================================
+       1. CSS VARIABLES & THEME ARCHITECTURE
+       ========================================================================== */
+    :root {
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Glassmorphism Surface Tokens */
+      --glass-bg: rgba(255, 255, 255, 0.28);
+      --glass-bg-elevated: rgba(255, 255, 255, 0.48);
+      --glass-bg-interactive: rgba(255, 255, 255, 0.65);
+      --glass-border: rgba(255, 255, 255, 0.65);
+      --glass-border-subtle: rgba(255, 255, 255, 0.35);
+      --glass-shadow: 
+        0 24px 48px -12px rgba(31, 38, 135, 0.08),
+        0 4px 16px rgba(31, 38, 135, 0.04),
+        inset 0 1px 1px rgba(255, 255, 255, 0.8);
+
+      /* Palette */
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+
+      --accent-primary: #6366f1;
+      --accent-secondary: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+      
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.14);
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.14);
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.14);
+
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --transition-smooth: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      background-color: #f4f6fb;
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ==========================================================================
+       2. ANIMATED PASTEL MESH GRADIENT BACKGROUND
+       ========================================================================== */
+    .ambient-mesh {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+    }
+
+    .blob {
+      position: absolute;
+      filter: blur(85px);
+      border-radius: 50%;
+      opacity: 0.75;
+      animation: floatBlob 22s infinite alternate ease-in-out;
+    }
+
+    .blob-1 {
+      width: 55vw;
+      height: 55vw;
+      max-width: 750px;
+      max-height: 750px;
+      background: radial-gradient(circle, #e0c3fc 0%, #8ec5fc 100%);
+      top: -15%;
+      left: -10%;
+      animation-delay: 0s;
+    }
+
+    .blob-2 {
+      width: 50vw;
+      height: 50vw;
+      max-width: 680px;
+      max-height: 680px;
+      background: radial-gradient(circle, #ffecd2 0%, #fcb69f 100%);
+      bottom: -15%;
+      right: -10%;
+      animation-delay: -6s;
+    }
+
+    .blob-3 {
+      width: 40vw;
+      height: 40vw;
+      max-width: 550px;
+      max-height: 550px;
+      background: radial-gradient(circle, #c2e9fb 0%, #a1c4fd 100%);
+      top: 30%;
+      left: 45%;
+      animation-delay: -12s;
+    }
+
+    .blob-4 {
+      width: 35vw;
+      height: 35vw;
+      max-width: 480px;
+      max-height: 480px;
+      background: radial-gradient(circle, #fbc2eb 0%, #a6c1ee 100%);
+      bottom: 10%;
+      left: 10%;
+      animation-delay: -18s;
+    }
+
+    @keyframes floatBlob {
+      0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+      50% { transform: translate(40px, -30px) scale(1.08) rotate(8deg); }
+      100% { transform: translate(-30px, 40px) scale(0.95) rotate(-8deg); }
+    }
+
+    /* Subtle noise texture overlay for tactile frosted glass realism */
+    .noise-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.25;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(99, 102, 241, 0.12) 1px, transparent 0);
+      background-size: 24px 24px;
+    }
+
+    /* ==========================================================================
+       3. GLASSMORPHISM UTILITY & SHELL LAYOUT
+       ========================================================================== */
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-shadow);
+      border-radius: var(--radius-xl);
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      z-index: 1;
+    }
+
+    /* ==========================================================================
+       4. TOP NAVIGATION & STATUS BAR
+       ========================================================================== */
+    .top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.75rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.55);
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #0f172a 0%, #4338ca 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.95rem;
+      border-radius: 999px;
+      background: var(--glass-bg-elevated);
+      border: 1px solid var(--glass-border);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: var(--transition-smooth);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 0 4px var(--warning-bg);
+      transition: var(--transition-smooth);
+    }
+
+    .status-dot.ready {
+      background: var(--success);
+      box-shadow: 0 0 0 4px var(--success-bg);
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+      box-shadow: 0 0 0 4px var(--danger-bg);
+    }
+
+    .live-clock {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      padding: 0.45rem 0.95rem;
+      border-radius: 999px;
+      background: var(--glass-bg-elevated);
+      border: 1px solid var(--glass-border);
+    }
+
+    /* ==========================================================================
+       5. MAIN DASHBOARD GRID (2 COLUMNS)
+       ========================================================================== */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ==========================================================================
+       6. LEFT COLUMN: BIOMETRIC SCANNER & TAB CONTROLS
+       ========================================================================== */
+    .scanner-card {
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Segmented Glass Tabs */
+    .tabs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .segmented-control {
+      display: inline-flex;
+      background: rgba(255, 255, 255, 0.35);
+      border: 1px solid var(--glass-border);
+      padding: 0.35rem;
+      border-radius: 16px;
+      position: relative;
+      gap: 0.25rem;
+    }
+
+    .tab-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 0.65rem 1.25rem;
+      border-radius: 12px;
+      font-family: var(--font-sans);
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: var(--transition-smooth);
+      position: relative;
+      z-index: 1;
+    }
+
+    .tab-btn svg {
+      width: 17px;
+      height: 17px;
+    }
+
+    .tab-btn.active {
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--accent-primary);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+    }
+
+    .tab-btn:hover:not(.active) {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .registered-counter {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--glass-bg-elevated);
+      padding: 0.45rem 0.9rem;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .registered-counter strong {
+      color: var(--accent-primary);
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+    }
+
+    /* Webcam Viewport & Biometric HUD */
+    .camera-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      min-height: 320px;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+      border: 2px solid rgba(255, 255, 255, 0.75);
+      box-shadow: 
+        0 20px 40px -15px rgba(15, 23, 42, 0.25),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #webcam {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Mirror mode for intuitive user positioning */
+    }
+
+    #overlayCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      transform: scaleX(-1); /* Match mirrored video */
+      z-index: 3;
+    }
+
+    /* Animated Biometric Reticle Ring & Laser Scanline */
+    .hud-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scan-ring {
+      width: 230px;
+      height: 230px;
+      border-radius: 50%;
+      border: 1.5px dashed rgba(255, 255, 255, 0.45);
+      position: relative;
+      transition: var(--transition-smooth);
+      animation: rotateRing 18s linear infinite;
+    }
+
+    .scan-ring::before {
+      content: '';
+      position: absolute;
+      inset: -10px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: rgba(99, 102, 241, 0.75);
+      border-bottom-color: rgba(236, 72, 153, 0.75);
+      animation: rotateRingReverse 8s linear infinite;
+    }
+
+    .camera-stage.face-locked .scan-ring {
+      border-color: rgba(16, 185, 129, 0.85);
+      box-shadow: 0 0 35px rgba(16, 185, 129, 0.35), inset 0 0 25px rgba(16, 185, 129, 0.2);
+      transform: scale(1.04);
+    }
+
+    .camera-stage.face-locked .scan-ring::before {
+      border-top-color: #10b981;
+      border-bottom-color: #34d399;
+    }
+
+    .scan-laser {
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.9) 50%, transparent 100%);
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.8);
+      animation: laserSweep 3.2s ease-in-out infinite alternate;
+      opacity: 0.75;
+    }
+
+    .camera-stage.face-locked .scan-laser {
+      background: linear-gradient(90deg, transparent 0%, rgba(16, 185, 129, 0.95) 50%, transparent 100%);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.9);
+    }
+
+    @keyframes rotateRing {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes rotateRingReverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+
+    @keyframes laserSweep {
+      0% { top: 15%; }
+      100% { top: 85%; }
+    }
+
+    /* Corner HUD brackets */
+    .hud-corner {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border-color: rgba(255, 255, 255, 0.65);
+      border-style: solid;
+      transition: var(--transition-smooth);
+    }
+    .camera-stage.face-locked .hud-corner {
+      border-color: #10b981;
+    }
+    .hud-tl { top: 18px; left: 18px; border-width: 3px 0 0 3px; border-top-left-radius: 8px; }
+    .hud-tr { top: 18px; right: 18px; border-width: 3px 3px 0 0; border-top-right-radius: 8px; }
+    .hud-bl { bottom: 18px; left: 18px; border-width: 0 0 3px 3px; border-bottom-left-radius: 8px; }
+    .hud-br { bottom: 18px; right: 18px; border-width: 0 3px 3px 0; border-bottom-right-radius: 8px; }
+
+    /* Live Floating Face Status Badge inside Camera */
+    .camera-badge {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 4;
+      background: rgba(15, 23, 42, 0.68);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #f8fafc;
+      padding: 0.45rem 1.1rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+      transition: var(--transition-smooth);
+    }
+
+    .camera-badge.detected {
+      background: rgba(16, 185, 129, 0.85);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: white;
+    }
+
+    /* Model Loading Curtain inside Camera */
+    .camera-loader {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      color: white;
+      text-align: center;
+      padding: 2rem;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+
+    .camera-loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #818cf8;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ==========================================================================
+       7. TAB PANELS & INTERACTIVE FORMS
+       ========================================================================== */
+    .tab-content {
+      display: none;
+      animation: fadeSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel-banner {
+      background: var(--glass-bg-elevated);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .panel-banner-info h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.2rem;
+    }
+
+    .panel-banner-info p {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+
+    /* Registration Form Inputs */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .input-group label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .glass-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .glass-input-wrapper svg {
+      position: absolute;
+      left: 14px;
+      width: 18px;
+      height: 18px;
+      color: var(--text-muted);
+      pointer-events: none;
+      transition: var(--transition-smooth);
+    }
+
+    .glass-input {
+      width: 100%;
+      padding: 0.85rem 1rem 0.85rem 2.65rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--glass-border);
+      background: var(--glass-bg-interactive);
+      font-family: var(--font-sans);
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      outline: none;
+      transition: var(--transition-smooth);
+    }
+
+    .glass-input::placeholder {
+      color: #94a3b8;
+      font-weight: 400;
+    }
+
+    .glass-input:focus {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+    }
+
+    .glass-input:focus + svg,
+    .glass-input-wrapper:focus-within svg {
+      color: var(--accent-primary);
+    }
+
+    /* Primary Action Buttons */
+    .btn-primary {
+      appearance: none;
+      border: none;
+      width: 100%;
+      padding: 1rem 1.5rem;
+      border-radius: var(--radius-md);
+      background: var(--accent-gradient);
+      color: white;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      box-shadow: 0 12px 24px -6px rgba(99, 102, 241, 0.5);
+      transition: var(--transition-smooth);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 32px -6px rgba(99, 102, 241, 0.65);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* Verification Result Card */
+    .match-result-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius-md);
+      background: rgba(16, 185, 129, 0.14);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      animation: fadeSlideUp 0.3s ease;
+    }
+
+    .match-result-banner.show {
+      display: flex;
+    }
+
+    .match-user-details {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .match-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: var(--success);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1rem;
+    }
+
+    /* ==========================================================================
+       8. RIGHT COLUMN: LIVE ATTENDANCE LOGS & STATS
+       ========================================================================== */
+    .logs-card {
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      height: 100%;
+      min-height: 620px;
+    }
+
+    .logs-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .logs-title-group h2 {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logs-title-group p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.15rem;
+    }
+
+    /* Mini KPI Row */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.85rem;
+    }
+
+    .kpi-box {
+      background: var(--glass-bg-elevated);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      padding: 0.9rem 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .kpi-value {
+      font-size: 1.45rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      margin-top: 0.2rem;
+    }
+
+    .kpi-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Search Filter Bar */
+    .search-bar {
+      position: relative;
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 0.7rem 1rem 0.7rem 2.5rem;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-bg-elevated);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      outline: none;
+      transition: var(--transition-smooth);
+    }
+
+    .search-bar input:focus {
+      background: rgba(255, 255, 255, 0.85);
+      border-color: var(--accent-primary);
+    }
+
+    .search-bar svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+    }
+
+    /* Glass Table / Scrollable Log List */
+    .logs-table-container {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 410px;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .logs-table-container::-webkit-scrollbar {
+      width: 6px;
+    }
+    .logs-table-container::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .logs-table-container::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.25);
+      border-radius: 999px;
+    }
+
+    .log-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-md);
+      background: var(--glass-bg-elevated);
+      border: 1px solid var(--glass-border);
+      transition: var(--transition-smooth);
+      animation: fadeSlideUp 0.3s ease;
+    }
+
+    .log-item:hover {
+      transform: translateX(4px);
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(99, 102, 241, 0.35);
+    }
+
+    .log-person {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .log-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: var(--accent-primary);
+      font-weight: 800;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .log-meta h4 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .log-meta span {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    .log-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.25rem;
+    }
+
+    .badge-present {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.22rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: var(--success-bg);
+      color: #047857;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .log-time {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.65rem;
+    }
+
+    .empty-state svg {
+      width: 38px;
+      height: 38px;
+      color: var(--accent-primary);
+      opacity: 0.65;
+    }
+
+    /* ==========================================================================
+       9. TOAST NOTIFICATION SYSTEM
+       ========================================================================== */
+    .toast-stack {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-width: 380px;
+      width: calc(100% - 48px);
+      pointer-events: none;
+    }
+
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      padding: 1rem 1.15rem;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.16);
+      animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      transition: var(--transition-smooth);
+    }
+
+    .toast.hiding {
+      opacity: 0;
+      transform: translateX(40px) scale(0.95);
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .toast-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .toast.success .toast-icon { background: var(--success-bg); color: var(--success); }
+    .toast.error .toast-icon { background: var(--danger-bg); color: var(--danger); }
+    .toast.info .toast-icon { background: rgba(99, 102, 241, 0.14); color: var(--accent-primary); }
+    .toast.warning .toast-icon { background: var(--warning-bg); color: var(--warning); }
+
+    .toast-body {
+      flex: 1;
+    }
+
+    .toast-title {
+      font-size: 0.86rem;
+      font-weight: 800;
+      color: var(--text-primary);
+    }
+
+    .toast-msg {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-top: 0.15rem;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Animated Pastel Mesh Background -->
+  <div class="ambient-mesh" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="blob blob-4"></div>
+  </div>
+  <div class="noise-overlay" aria-hidden="true"></div>
+
+  <!-- Main Application Shell -->
+  <main class="app-container">
+
+    <!-- Top Glass Header -->
+    <header class="glass-panel top-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <i data-lucide="scan-face"></i>
+        </div>
+        <div>
+          <div class="brand-title">AuraFace AI</div>
+          <div class="brand-subtitle">Biometric Cloud Attendance Terminal</div>
+        </div>
+      </div>
+
+      <div class="header-meta">
+        <div class="status-pill" id="modelStatusPill">
+          <span class="status-dot" id="modelStatusDot"></span>
+          <span id="modelStatusText">Loading Neural Networks...</span>
+        </div>
+        <div class="live-clock" id="liveClock">--:--:--</div>
+      </div>
+    </header>
+
+    <!-- Main 2-Column Content Grid -->
+    <section class="dashboard-grid">
+
+      <!-- LEFT COLUMN: Webcam Scanner & Mode Tabs -->
+      <div class="glass-panel scanner-card">
+        <div class="tabs-header">
+          <div class="segmented-control" role="tablist">
+            <button class="tab-btn active" id="tabBtnCheckin" data-target="panelCheckin" role="tab">
+              <i data-lucide="user-check"></i>
+              Attendance Check-In
+            </button>
+            <button class="tab-btn" id="tabBtnRegister" data-target="panelRegister" role="tab">
+              <i data-lucide="user-plus"></i>
+              Register Face
+            </button>
+          </div>
+
+          <div class="registered-counter" title="Total faces synced from Firestore">
+            <i data-lucide="database" style="width:15px;height:15px;"></i>
+            Synced Profiles: <strong id="registeredCount">0</strong>
+          </div>
+        </div>
+
+        <!-- Live Webcam Stage with Animated HUD -->
+        <div class="camera-stage" id="cameraStage">
+          <video id="webcam" autoplay muted playsinline></video>
+          <canvas id="overlayCanvas"></canvas>
+
+          <!-- Biometric Reticle & Laser Overlay -->
+          <div class="hud-overlay">
+            <div class="hud-corner hud-tl"></div>
+            <div class="hud-corner hud-tr"></div>
+            <div class="hud-corner hud-bl"></div>
+            <div class="hud-corner hud-br"></div>
+            <div class="scan-ring"></div>
+            <div class="scan-laser"></div>
+          </div>
+
+          <!-- Real-time Face Tracking Badge -->
+          <div class="camera-badge" id="cameraBadge">
+            <i data-lucide="sparkles" style="width:14px;height:14px;"></i>
+            <span id="cameraBadgeText">Initializing camera stream...</span>
+          </div>
+
+          <!-- Initial Neural Network Loading Overlay -->
+          <div class="camera-loader" id="cameraLoader">
+            <div class="spinner"></div>
+            <div>
+              <h3 style="font-size:1rem;font-weight:700;margin-bottom:4px;">Loading Face Recognition Models</h3>
+              <p style="font-size:0.8rem;color:#cbd5e1;" id="loaderSubtext">Fetching SSD MobileNetV1, 68-Landmark & Recognition weights...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 1: ATTENDANCE CHECK-IN PANEL -->
+        <div class="tab-content active" id="panelCheckin" role="tabpanel">
+          <div class="panel-banner">
+            <div class="panel-banner-info">
+              <h3>Instant Biometric Verification</h3>
+              <p>Position your face inside the reticle and click verify to log your attendance.</p>
+            </div>
+            <span class="status-pill" style="font-family:var(--font-mono);font-size:0.75rem;">
+              Threshold: 0.55
+            </span>
+          </div>
+
+          <!-- Dynamic Match Feedback Banner -->
+          <div class="match-result-banner" id="matchResultBanner">
+            <div class="match-user-details">
+              <div class="match-avatar" id="matchAvatar">✓</div>
+              <div>
+                <div style="font-weight:800;font-size:0.95rem;" id="matchName">Verified Employee</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);font-family:var(--font-mono);" id="matchMeta">ID: --- • Confidence: --%</div>
+              </div>
+            </div>
+            <span class="badge-present">
+              <i data-lucide="check-circle-2" style="width:13px;height:13px;"></i>
+              Checked In
+            </span>
+          </div>
+
+          <button class="btn-primary" id="btnVerifyCheckin" disabled>
+            <i data-lucide="scan"></i>
+            <span>Verify &amp; Check-In Now</span>
+          </button>
+        </div>
+
+        <!-- TAB 2: FACE REGISTRATION PANEL -->
+        <div class="tab-content" id="panelRegister" role="tabpanel">
+          <div class="panel-banner">
+            <div class="panel-banner-info">
+              <h3>Enroll New Employee Profile</h3>
+              <p>Extracts a 128-float biometric descriptor vector and stores it in Firebase Firestore.</p>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-group">
+              <label for="empName">Employee Full Name</label>
+              <div class="glass-input-wrapper">
+                <input type="text" id="empName" class="glass-input" placeholder="e.g. Aarav Sharma" autocomplete="off" />
+                <i data-lucide="user"></i>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <label for="empId">Employee ID</label>
+              <div class="glass-input-wrapper">
+                <input type="text" id="empId" class="glass-input" placeholder="e.g. EMP-2048" autocomplete="off" />
+                <i data-lucide="id-card"></i>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="btnCaptureRegister" disabled>
+            <i data-lucide="Sparkles"></i>
+            <span>Capture &amp; Register Face</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Live Firestore Attendance Logs -->
+      <aside class="glass-panel logs-card">
+        <div class="logs-header">
+          <div class="logs-title-group">
+            <h2>
+              <i data-lucide="activity" style="color:var(--accent-primary);width:20px;height:20px;"></i>
+              Live Attendance Feed
+            </h2>
+            <p>Real-time synchronization with Firestore</p>
+          </div>
+          <span class="status-pill" style="font-size:0.72rem;">
+            <span class="status-dot ready" style="width:6px;height:6px;"></span>
+            Live Sync
+          </span>
+        </div>
+
+        <!-- KPI Summary Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-box">
+            <div>
+              <div class="kpi-label">Today's Check-Ins</div>
+              <div class="kpi-value" id="kpiTodayCount">0</div>
+            </div>
+            <div class="kpi-icon">
+              <i data-lucide="calendar-check-2"></i>
+            </div>
+          </div>
+          <div class="kpi-box">
+            <div>
+              <div class="kpi-label">Total Logs</div>
+              <div class="kpi-value" id="kpiTotalLogs">0</div>
+            </div>
+            <div class="kpi-icon">
+              <i data-lucide="layers"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Input -->
+        <div class="search-bar">
+          <i data-lucide="search"></i>
+          <input type="text" id="searchLogsInput" placeholder="Filter by employee name or ID..." />
+        </div>
+
+        <!-- Attendance List Container -->
+        <div class="logs-table-container" id="attendanceLogsList">
+          <div class="empty-state">
+            <i data-lucide="clock-4"></i>
+            <p style="font-weight:600;font-size:0.9rem;">Waiting for attendance records...</p>
+            <span style="font-size:0.78rem;">Check-ins will stream here automatically in real time.</span>
+          </div>
+        </div>
+      </aside>
+
+    </section>
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <!-- ==========================================================================
+       APPLICATION LOGIC: FIREBASE V10+ MODULAR SDK & FACE-API.JS
+       ========================================================================== -->
+  <script type="module">
+    // 1. Import Firebase Modular SDKs via CDN
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-analytics.js";
+    import { 
+      getFirestore, 
+      collection, 
+      addDoc, 
+      getDocs, 
+      onSnapshot, 
+      query, 
+      orderBy, 
+      limit, 
+      serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+    // ============================================================================
+    // FIREBASE CONFIGURATION (Replace or customize keys here if needed)
+    // ============================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyC3VgmFkOILkNy8TtGDw9VYsakx1QBJoFo",
+      authDomain: "attendance-27a80.firebaseapp.com",
+      projectId: "attendance-27a80",
+      storageBucket: "attendance-27a80.firebasestorage.app",
+      messagingSenderId: "446098223019",
+      appId: "1:446098223019:web:420d719017b981a9646cee",
+      measurementId: "G-C6JY5V6LD4"
+    };
+
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // ============================================================================
+    // STATE & DOM REFERENCES
+    // ============================================================================
+    const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+    const MATCH_THRESHOLD = 0.55;
+
+    let db = null;
+    let isModelsLoaded = false;
+    let isCameraReady = false;
+    let faceMatcher = null;
+    let registeredUsers = []; // Stores { name, empId, descriptor: Float32Array }
+    let allAttendanceLogs = [];
+
+    // DOM Elements
+    const webcamEl = document.getElementById("webcam");
+    const overlayCanvas = document.getElementById("overlayCanvas");
+    const cameraStage = document.getElementById("cameraStage");
+    const cameraBadge = document.getElementById("cameraBadge");
+    const cameraBadgeText = document.getElementById("cameraBadgeText");
+    const cameraLoader = document.getElementById("cameraLoader");
+    const loaderSubtext = document.getElementById("loaderSubtext");
+
+    const modelStatusDot = document.getElementById("modelStatusDot");
+    const modelStatusText = document.getElementById("modelStatusText");
+    const registeredCountEl = document.getElementById("registeredCount");
+
+    const btnVerifyCheckin = document.getElementById("btnVerifyCheckin");
+    const btnCaptureRegister = document.getElementById("btnCaptureRegister");
+    const empNameInput = document.getElementById("empName");
+    const empIdInput = document.getElementById("empId");
+
+    const matchResultBanner = document.getElementById("matchResultBanner");
+    const matchAvatar = document.getElementById("matchAvatar");
+    const matchName = document.getElementById("matchName");
+    const matchMeta = document.getElementById("matchMeta");
+
+    const attendanceLogsList = document.getElementById("attendanceLogsList");
+    const searchLogsInput = document.getElementById("searchLogsInput");
+    const kpiTodayCount = document.getElementById("kpiTodayCount");
+    const kpiTotalLogs = document.getElementById("kpiTotalLogs");
+
+    // ============================================================================
+    // 2. TOAST NOTIFICATION HELPER & SUBTLE AUDIO BEEP
+    // ============================================================================
+    function playChime(type = "success") {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        if (type === "success") {
+          osc.frequency.setValueAtTime(587.33, now); // D5
+          osc.frequency.setValueAtTime(880, now + 0.1); // A5
+        } else {
+          osc.frequency.setValueAtTime(300, now);
+          osc.frequency.setValueAtTime(220, now + 0.12);
+        }
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      } catch (_) {
+        // Ignore audio errors if user hasn't interacted yet
+      }
+    }
+
+    function showToast(title, message, type = "info") {
+      const stack = document.getElementById("toastStack");
+      const toast = document.createElement("div");
+      toast.className = `toast ${type}`;
+
+      const iconMap = {
+        success: "check-circle-2",
+        error: "alert-triangle",
+        warning: "alert-circle",
+        info: "sparkles"
+      };
+
+      toast.innerHTML = `
+        <div class="toast-icon">
+          <i data-lucide="${iconMap[type] || 'info'}" style="width:18px;height:18px;"></i>
+        </div>
+        <div class="toast-body">
+          <div class="toast-title">${title}</div>
+          <div class="toast-msg">${message}</div>
+        </div>
+      `;
+
+      stack.appendChild(toast);
+      lucide.createIcons({ nodes: [toast] });
+
+      setTimeout(() => {
+        toast.classList.add("hiding");
+        setTimeout(() => toast.remove(), 350);
+      }, 4200);
+    }
+
+    // ============================================================================
+    // 3. LIVE DIGITAL CLOCK & TAB NAVIGATION
+    // ============================================================================
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("liveClock").textContent = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Smooth Tab Switching
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach((p) => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const targetPanel = document.getElementById(btn.dataset.target);
+        if (targetPanel) targetPanel.classList.add("active");
+      });
+    });
+
+    // ============================================================================
+    // 4. FIREBASE INITIALIZATION & REAL-TIME LISTENERS
+    // ============================================================================
+    function initFirebase() {
+      try {
+        if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes("YOUR_API_KEY")) {
+          throw new Error("Missing or placeholder Firebase configuration keys.");
+        }
+
+        const app = initializeApp(firebaseConfig);
+        isSupported().then((yes) => yes && getAnalytics(app)).catch(() => {});
+        db = getFirestore(app);
+
+        // Subscribe to real-time updates on `users` collection to keep FaceMatcher updated
+        const usersRef = collection(db, "users");
+        onSnapshot(usersRef, (snapshot) => {
+          registeredUsers = [];
+          const labeledDescriptors = [];
+
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.name && data.empId && Array.isArray(data.descriptor) && data.descriptor.length === 128) {
+              const float32Desc = new Float32Array(data.descriptor);
+              registeredUsers.push({
+                id: docSnap.id,
+                name: data.name,
+                empId: data.empId,
+                descriptor: float32Desc
+              });
+
+              // Use a JSON-encoded label so we can retrieve both name and empId on match
+              const labelPayload = JSON.stringify({ name: data.name, empId: data.empId });
+              labeledDescriptors.push(
+                new window.faceapi.LabeledFaceDescriptors(labelPayload, [float32Desc])
+              );
+            }
+          });
+
+          registeredCountEl.textContent = registeredUsers.length;
+
+          if (labeledDescriptors.length > 0 && window.faceapi) {
+            faceMatcher = new window.faceapi.FaceMatcher(labeledDescriptors, MATCH_THRESHOLD);
+          } else {
+            faceMatcher = null;
+          }
+        }, (error) => {
+          console.error("Firestore Users Listener Error:", error);
+          showToast("Firestore Sync Warning", "Could not read 'users' collection. Check Firestore rules.", "warning");
+        });
+
+        // Subscribe to real-time updates on `attendance` collection
+        const attendanceQuery = query(
+          collection(db, "attendance"),
+          orderBy("timestamp", "desc"),
+          limit(50)
+        );
+
+        onSnapshot(attendanceQuery, (snapshot) => {
+          allAttendanceLogs = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }));
+          renderAttendanceLogs();
+        }, (error) => {
+          console.error("Firestore Attendance Listener Error:", error);
+          showToast("Attendance Feed Error", "Unable to stream real-time logs from Firestore.", "error");
+        });
+
+      } catch (err) {
+        console.error("Firebase Initialization Error:", err);
+        showToast("Firebase Error", err.message, "error");
+      }
+    }
+
+    // ============================================================================
+    // 5. RENDER REAL-TIME ATTENDANCE LOGS
+    // ============================================================================
+    function renderAttendanceLogs() {
+      const filterText = (searchLogsInput.value || "").trim().toLowerCase();
+      const filtered = allAttendanceLogs.filter((item) => {
+        const nameMatch = (item.name || "").toLowerCase().includes(filterText);
+        const idMatch = (item.empId || "").toLowerCase().includes(filterText);
+        return nameMatch || idMatch;
+      });
+
+      // Calculate Today's Check-ins KPI
+      const todayStr = new Date().toDateString();
+      const todayCount = allAttendanceLogs.filter((item) => {
+        const dt = item.timestamp?.toDate ? item.timestamp.toDate() : new Date(item.clientTimestamp || Date.now());
+        return dt.toDateString() === todayStr;
+      }).length;
+
+      kpiTodayCount.textContent = todayCount;
+      kpiTotalLogs.textContent = allAttendanceLogs.length;
+
+      if (filtered.length === 0) {
+        attendanceLogsList.innerHTML = `
+          <div class="empty-state">
+            <i data-lucide="inbox"></i>
+            <p style="font-weight:600;font-size:0.9rem;">No matching attendance logs</p>
+            <span style="font-size:0.78rem;">Verify your face on the left panel to create a live entry.</span>
+          </div>
+        `;
+        lucide.createIcons({ nodes: [attendanceLogsList] });
+        return;
+      }
+
+      attendanceLogsList.innerHTML = filtered.map((log) => {
+        const initials = (log.name || "U")
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .substring(0, 2)
+          .toUpperCase();
+
+        const dateObj = log.timestamp?.toDate
+          ? log.timestamp.toDate()
+          : new Date(log.clientTimestamp || Date.now());
+
+        const formattedTime = dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const formattedDate = dateObj.toLocaleDateString([], { month: "short", day: "numeric" });
+
+        return `
+          <div class="log-item">
+            <div class="log-person">
+              <div class="log-avatar">${initials}</div>
+              <div class="log-meta">
+                <h4>${escapeHtml(log.name || "Unknown")}</h4>
+                <span>ID: ${escapeHtml(log.empId || "N/A")}</span>
+              </div>
+            </div>
+            <div class="log-right">
+              <span class="badge-present">
+                <i data-lucide="check" style="width:12px;height:12px;"></i>
+                ${escapeHtml(log.status || "Present")}
+              </span>
+              <span class="log-time">${formattedDate}, ${formattedTime}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      lucide.createIcons({ nodes: [attendanceLogsList] });
+    }
+
+    searchLogsInput.addEventListener("input", renderAttendanceLogs);
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+      }[m]));
+    }
+
+    // ============================================================================
+    // 6. LOAD FACE-API.JS MODELS & START WEBCAM
+    // ============================================================================
+    async function loadFaceApiModels() {
+      try {
+        showToast("Loading AI Models", "Downloading biometric neural networks from CDN...", "info");
+
+        // Wait until faceapi is available on window
+        while (typeof window.faceapi === "undefined") {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+
+        await Promise.all([
+          window.faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+          window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+
+        isModelsLoaded = true;
+        modelStatusDot.classList.add("ready");
+        modelStatusText.textContent = "Biometric Engine Ready";
+        loaderSubtext.textContent = "Starting HD Webcam stream...";
+
+        await startWebcam();
+      } catch (err) {
+        console.error("Model Loading Error:", err);
+        modelStatusDot.classList.add("error");
+        modelStatusText.textContent = "Model Load Failed";
+        loaderSubtext.textContent = "Failed to load models. Check your internet connection.";
+        showToast("Model Load Error", "Could not load face-api.js models from CDN.", "error");
+      }
+    }
+
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+          audio: false
+        });
+
+        webcamEl.srcObject = stream;
+
+        webcamEl.onloadedmetadata = () => {
+          webcamEl.play();
+          isCameraReady = true;
+          cameraLoader.classList.add("hidden");
+          btnVerifyCheckin.disabled = false;
+          btnCaptureRegister.disabled = false;
+
+          // Initialize Firebase after models & camera are ready
+          initFirebase();
+
+          showToast("System Online", "Face recognition models and webcam initialized.", "success");
+          startLiveFaceTrackingLoop();
+        };
+      } catch (err) {
+        console.error("Webcam Access Error:", err);
+        modelStatusDot.classList.remove("ready");
+        modelStatusDot.classList.add("error");
+        modelStatusText.textContent = "Camera Blocked";
+        loaderSubtext.textContent = "Please allow camera permissions in your browser.";
+        showToast("Camera Permission Denied", "Please grant webcam access and reload the page.", "error");
+      }
+    }
+
+    // ============================================================================
+    // 7. CONTINUOUS AMBIENT FACE TRACKING OVERLAY LOOP
+    // ============================================================================
+    function startLiveFaceTrackingLoop() {
+      const displaySize = { width: webcamEl.videoWidth, height: webcamEl.videoHeight };
+      window.faceapi.matchDimensions(overlayCanvas, displaySize);
+
+      setInterval(async () => {
+        if (!isModelsLoaded || !isCameraReady || webcamEl.paused || webcamEl.ended) return;
+
+        try {
+          const detections = await window.faceapi
+            .detectAllFaces(webcamEl, new window.faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+            .withFaceLandmarks();
+
+          const currentSize = { width: webcamEl.clientWidth, height: webcamEl.clientHeight };
+          window.faceapi.matchDimensions(overlayCanvas, currentSize);
+          const resized = window.faceapi.resizeResults(detections, currentSize);
+
+          const ctx = overlayCanvas.getContext("2d");
+          ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+          if (resized.length === 1) {
+            cameraStage.classList.add("face-locked");
+            cameraBadge.classList.add("detected");
+            cameraBadgeText.textContent = "1 Face Locked • Ready for Biometric Scan";
+
+            // Draw sleek custom bounding box & subtle landmarks
+            const box = resized[0].detection.box;
+            ctx.strokeStyle = "rgba(16, 185, 129, 0.85)";
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else if (resized.length > 1) {
+            cameraStage.classList.remove("face-locked");
+            cameraBadge.classList.remove("detected");
+            cameraBadgeText.textContent = `Warning: ${resized.length} faces in frame (Only 1 allowed)`;
+          } else {
+            cameraStage.classList.remove("face-locked");
+            cameraBadge.classList.remove("detected");
+            cameraBadgeText.textContent = "Scanning frame for face...";
+          }
+        } catch (_) {
+          // Ignore transient frame detection errors
+        }
+      }, 380);
+    }
+
+    // ============================================================================
+    // 8. REGISTER FACE WORKFLOW (Save 128-Float Array to `users`)
+    // ============================================================================
+    btnCaptureRegister.addEventListener("click", async () => {
+      const name = empNameInput.value.trim();
+      const empId = empIdInput.value.trim().toUpperCase();
+
+      if (!name || !empId) {
+        showToast("Missing Details", "Please enter both Employee Name and Employee ID.", "warning");
+        return;
+      }
+
+      if (!db) {
+        showToast("Database Offline", "Firebase Firestore is not initialized.", "error");
+        return;
+      }
+
+      // Check if Employee ID already exists
+      const duplicate = registeredUsers.find((u) => u.empId.toUpperCase() === empId);
+      if (duplicate) {
+        showToast("Duplicate Employee ID", `ID ${empId} is already registered to ${duplicate.name}.`, "warning");
+        return;
+      }
+
+      const originalBtnHtml = btnCaptureRegister.innerHTML;
+      btnCaptureRegister.disabled = true;
+      btnCaptureRegister.innerHTML = `<div class="spinner" style="width:20px;height:20px;border-width:2px;"></div><span>Extracting 128-D Face Vector...</span>`;
+
+      try {
+        // Detect all faces to ensure strictly 1 person is in frame
+        const detections = await window.faceapi
+          .detectAllFaces(webcamEl, new window.faceapi.SsdMobilenetv1Options({ minConfidence: 0.55 }))
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+
+        if (detections.length === 0) {
+          playChime("error");
+          showToast("No Face Detected", "Please look directly at the camera with good lighting.", "error");
+          return;
+        }
+
+        if (detections.length > 1) {
+          playChime("error");
+          showToast("Multiple Faces Detected", "Please ensure only one person is visible in the camera frame.", "warning");
+          return;
+        }
+
+        // Convert Float32Array (128 floats) to standard JS Array for Firestore
+        const descriptorFloat32 = detections[0].descriptor;
+        const descriptorArray = Array.from(descriptorFloat32);
+
+        await addDoc(collection(db, "users"), {
+          name,
+          empId,
+          descriptor: descriptorArray,
+          createdAt: serverTimestamp()
+        });
+
+        playChime("success");
+        showToast("Face Registered!", `${name} (${empId}) has been enrolled in Firestore.`, "success");
+
+        // Reset inputs
+        empNameInput.value = "";
+        empIdInput.value = "";
+
+      } catch (err) {
+        console.error("Registration Error:", err);
+        playChime("error");
+        showToast("Registration Failed", err.message || "Could not save face descriptor to Firestore.", "error");
+      } finally {
+        btnCaptureRegister.disabled = false;
+        btnCaptureRegister.innerHTML = originalBtnHtml;
+        lucide.createIcons({ nodes: [btnCaptureRegister] });
+      }
+    });
+
+    // ============================================================================
+    // 9. VERIFY & CHECK-IN WORKFLOW (Match Face & Save to `attendance`)
+    // ============================================================================
+    btnVerifyCheckin.addEventListener("click", async () => {
+      if (!db) {
+        showToast("Database Offline", "Firebase Firestore is not connected.", "error");
+        return;
+      }
+
+      const originalBtnHtml = btnVerifyCheckin.innerHTML;
+      btnVerifyCheckin.disabled = true;
+      btnVerifyCheckin.innerHTML = `<div class="spinner" style="width:20px;height:20px;border-width:2px;"></div><span>Matching Biometric Signature...</span>`;
+      matchResultBanner.classList.remove("show");
+
+      try {
+        // Ensure we have latest users loaded; if empty, perform a fresh fetch from `users`
+        if (!faceMatcher || registeredUsers.length === 0) {
+          const snap = await getDocs(collection(db, "users"));
+          const labeled = [];
+          registeredUsers = [];
+
+          snap.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d.name && d.empId && Array.isArray(d.descriptor) && d.descriptor.length === 128) {
+              const f32 = new Float32Array(d.descriptor);
+              registeredUsers.push({ name: d.name, empId: d.empId, descriptor: f32 });
+              labeled.push(new window.faceapi.LabeledFaceDescriptors(JSON.stringify({ name: d.name, empId: d.empId }), [f32]));
+            }
+          });
+
+          registeredCountEl.textContent = registeredUsers.length;
+
+          if (labeled.length === 0) {
+            playChime("error");
+            showToast("No Registered Faces", "Please register at least one employee in the 'Register Face' tab first.", "warning");
+            return;
+          }
+
+          faceMatcher = new window.faceapi.FaceMatcher(labeled, MATCH_THRESHOLD);
+        }
+
+        // Detect live face from webcam
+        const detections = await window.faceapi
+          .detectAllFaces(webcamEl, new window.faceapi.SsdMobilenetv1Options({ minConfidence: 0.55 }))
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+
+        if (detections.length === 0) {
+          playChime("error");
+          showToast("No Face Detected", "Please center your face inside the scanning ring.", "error");
+          return;
+        }
+
+        if (detections.length > 1) {
+          playChime("error");
+          showToast("Multiple Faces Found", "Only one person can check in at a time.", "warning");
+          return;
+        }
+
+        // Find best match using FaceMatcher (threshold 0.55)
+        const bestMatch = faceMatcher.findBestMatch(detections[0].descriptor);
+
+        if (bestMatch.label === "unknown") {
+          playChime("error");
+          showToast(
+            "Unrecognized Face",
+            `Biometric distance (${bestMatch.distance.toFixed(2)}) exceeded threshold (0.55). Please register first.`,
+            "error"
+          );
+          return;
+        }
+
+        const matchedUser = JSON.parse(bestMatch.label);
+        const confidencePct = Math.max(0, Math.min(100, Math.round((1 - bestMatch.distance) * 100)));
+
+        // Save attendance record to Firestore `attendance` collection
+        await addDoc(collection(db, "attendance"), {
+          name: matchedUser.name,
+          empId: matchedUser.empId,
+          status: "Present",
+          timestamp: serverTimestamp(),
+          clientTimestamp: Date.now(),
+          confidence: confidencePct
+        });
+
+        // Update UI Match Banner
+        const initials = matchedUser.name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .substring(0, 2)
+          .toUpperCase();
+
+        matchAvatar.textContent = initials;
+        matchName.textContent = matchedUser.name;
+        matchMeta.textContent = `ID: ${matchedUser.empId} • Match Confidence: ${confidencePct}%`;
+        matchResultBanner.classList.add("show");
+
+        playChime("success");
+        showToast("Attendance Marked!", `Welcome, ${matchedUser.name} (${matchedUser.empId}). Marked Present.`, "success");
+
+      } catch (err) {
+        console.error("Verification Error:", err);
+        playChime("error");
+        showToast("Verification Error", err.message || "An error occurred during face verification.", "error");
+      } finally {
+        btnVerifyCheckin.disabled = false;
+        btnVerifyCheckin.innerHTML = originalBtnHtml;
+        lucide.createIcons({ nodes: [btnVerifyCheckin] });
+      }
+    });
+
+    // Boot Application on Window Load
+    window.addEventListener("DOMContentLoaded", () => {
+      loadFaceApiModels();
+    });
+  </script>
+</body>
+</html>
